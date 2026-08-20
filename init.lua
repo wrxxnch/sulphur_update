@@ -21,10 +21,7 @@ local function register_full_block(name, description, texture, groups, sounds)
 end
 
 local stone_groups = { pickaxey = 1, building_block = 1 }
-register_full_block("sulphur_block", "Bloco de enxofre", "sulphur_block",
-	{ pickaxey = 1, building_block = 1, material_sulphur = 1 })
-register_full_block("cinnabar_block", "Bloco de cinábrio", "cinnabar_block",
-	{ pickaxey = 2, building_block = 1, material_rock = 1 })
+
 -- Official Sulfur/Cinnabar family names from the Minecraft Wiki.
 register_full_block("cinnabar", "Cinábrio", "cinnabar", { pickaxey = 1, building_block = 1, material_rock = 1 })
 register_full_block("chiseled_cinnabar", "Cinábrio talhado", "chiseled_cinnabar", stone_groups)
@@ -77,6 +74,7 @@ register_spike_model("sulfur_spike_up_tip", "Espinho de enxofre — ponta superi
 
 core.register_alias(modname .. ":cinnabar_block_wiki", modname .. ":cinnabar")
 core.register_alias(modname .. ":sulfur_block_wiki", modname .. ":sulfur")
+core.register_alias(modname .. ":sulphur_block_wiki", modname .. ":sulphur")
 
 core.register_node(modname .. ":sulphur_stalactite", {
 	description = S("Estalactite de enxofre"),
@@ -145,15 +143,15 @@ core.register_node(modname .. ":sulphur_smoke", {
 local function craft(output, recipe)
 	core.register_craft({ output = modname .. ":" .. output, recipe = recipe })
 end
-craft("sulphur_block",
+craft("sulphur",
 	{ { modname .. ":sulphur_stalactite", modname .. ":sulphur_stalactite" }, { modname .. ":sulphur_stalactite", modname .. ":sulphur_stalactite" } })
-craft("cinnabar_block",
+craft("cinnabar",
 	{ { modname .. ":cinnabar", modname .. ":cinnabar", modname .. ":cinnabar" }, { modname .. ":cinnabar", modname .. ":cinnabar", modname .. ":cinnabar" }, { modname .. ":cinnabar", modname .. ":cinnabar", modname .. ":cinnabar" } })
 craft("sulphur_bricks",
-	{ { modname .. ":sulphur_block", modname .. ":sulphur_block" }, { modname .. ":sulphur_block", modname .. ":sulphur_block" } })
+	{ { modname .. ":sulphur", modname .. ":sulphur" }, { modname .. ":sulphur", modname .. ":sulphur" } })
 craft("cinnabar_bricks",
-	{ { modname .. ":cinnabar_block", modname .. ":cinnabar_block" }, { modname .. ":cinnabar_block", modname .. ":cinnabar_block" } })
-core.register_craft({ output = modname .. ":sulphur_stalactite 4", recipe = { { modname .. ":sulphur_block" }, { modname .. ":sulphur_block" } } })
+	{ { modname .. ":cinnabar", modname .. ":cinnabar" }, { modname .. ":cinnabar", modname .. ":cinnabar" } })
+core.register_craft({ output = modname .. ":sulphur_stalactite 4", recipe = { { modname .. ":sulphur" }, { modname .. ":sulphur" } } })
 core.register_craft({ output = modname .. ":polished_cinnabar 4", recipe = { { modname .. ":cinnabar" }, { modname .. ":cinnabar" } } })
 core.register_craft({ output = modname .. ":polished_sulfur 4", recipe = { { modname .. ":sulfur" }, { modname .. ":sulfur" } } })
 core.register_craft({ output = modname .. ":potent_sulfur", recipe = { { modname .. ":sulfur", modname .. ":sulfur" }, { modname .. ":sulfur", modname .. ":sulfur" } } })
@@ -164,31 +162,6 @@ core.register_craft({ output = modname .. ":sulfur_bricks 4", recipe = { { modna
 core.register_craft({ output = modname .. ":bucket_of_sulfur_cube", recipe = { { "mcl_buckets:bucket_empty", modname .. ":sulfur" } } })
 core.register_craft({ output = modname .. ":sulphur_smoke 2", recipe = { { modname .. ":sulphur_dust" }, { "mcl_core:water_source" } } })
 
--- Extra resource generation, guarded for engines/games without register_ore.
-if core.register_ore then
-	core.register_ore({
-		ore_type = "scatter",
-		ore = modname .. ":sulphur_ore",
-		wherein = { "mcl_core:stone", "mcl_core:deepslate" },
-		clust_scarcity = 13 *
-			13 * 13,
-		clust_num_ores = 4,
-		clust_size = 3,
-		y_max = 16,
-		y_min = -64
-	})
-	core.register_ore({
-		ore_type = "scatter",
-		ore = modname .. ":cinnabar_block",
-		wherein = { "mcl_core:stone", "mcl_core:deepslate" },
-		clust_scarcity = 17 *
-			17 * 17,
-		clust_num_ores = 3,
-		clust_size = 2,
-		y_max = 0,
-		y_min = -64
-	})
-end
 
 local function item_is_block(name)
 	return name and name ~= "" and core.registered_nodes[name] and core.registered_nodes[name].walkable
@@ -316,8 +289,88 @@ local function sulfur_slime_ai(self, dtime)
 	end
 end
 
+-- O bloco absorvido é mesclado diretamente na textura UV do slime.
+local SLIME_FRONT_TEXTURE = "sulfur_cube_entity_front.png^[opacity:237"
+local SLIME_SIDE_TEXTURES = {
+	"sulfur_cube_entity_side1.png^[opacity:237",
+	"sulfur_cube_entity_side2.png^[opacity:237",
+	"sulfur_cube_entity_side3.png^[opacity:237",
+	"sulfur_cube_entity_side4.png^[opacity:237",
+	"sulfur_cube_entity_side5.png^[opacity:237",
+}
+
+local function get_block_texture(itemname)
+	local def = core.registered_items[itemname] or core.registered_nodes[itemname]
+	if not def then return "blank.png" end
+	if def.inventory_image and def.inventory_image ~= "" then return def.inventory_image end
+	if def.tiles and def.tiles[1] then
+		local tile = def.tiles[1]
+		if type(tile) == "string" then return tile end
+	end
+	return "blank.png"
+end
+
+local function compose_face_texture(base_texture, itemname)
+	local block_texture = get_block_texture(itemname) .. "^[resize:32x32"
+	-- O bloco ocupa 32x32 no atlas 128x64 e fica centralizado, menor que o slime.
+	return base_texture .. "^[combine:128x64:48,16=" .. block_texture
+end
+
+local function slime_texture_list(itemname)
+	local textures = {}
+	if itemname then
+		textures[1] = compose_face_texture(SLIME_FRONT_TEXTURE, itemname)
+		for i = 1, 5 do
+			textures[i + 1] = compose_face_texture(SLIME_SIDE_TEXTURES[i], itemname)
+		end
+	else
+		textures[1] = SLIME_FRONT_TEXTURE
+		for i = 1, 5 do
+			textures[i + 1] = SLIME_SIDE_TEXTURES[i]
+		end
+	end
+	return textures
+end
+
+local function remove_contents_visual(self)
+	self.sulphur_contents = nil
+	self.object:set_properties({ textures = { slime_texture_list() } })
+end
+
+local function set_contents_visual(self, itemname)
+	self.sulphur_contents = true
+	self.object:set_properties({ textures = { slime_texture_list(itemname) } })
+end
+
+local function make_slime_immortal(self)
+	self.sulphur_immortal = true
+	self.object:set_armor_groups({ immortal = 1 })
+end
+
+local function make_slime_vulnerable(self)
+	self.sulphur_immortal = false
+	self.object:set_armor_groups({ fleshy = 80 })
+end
+
+local function remove_absorbed_block(self, clicker, toolstack)
+	if not self.sulphur_block then return false end
+	core.add_item(self.object:get_pos(), self.sulphur_block)
+	self.sulphur_block = nil
+	self.sulphur_material = nil
+	self.sulphur_rule = nil
+	remove_contents_visual(self)
+	make_slime_vulnerable(self)
+	self.object:set_properties({ textures = { slime_texture_list() }, nametag = S("Cubo de enxofre") })
+	if toolstack and toolstack:get_name() == "mcl_tools:shears" and not core.is_creative_enabled(clicker:get_player_name()) then
+		toolstack:add_wear(6553)
+		clicker:set_wielded_item(toolstack)
+	end
+	return true
+end
+
 -- Definição do Mob
 if mcl_mobs and mcl_mobs.register_mob then
+
 	local slime_def = {
 		description = S("Slime de enxofre"),
 		type = "animal", 
@@ -330,8 +383,9 @@ if mcl_mobs and mcl_mobs.register_mob then
 		visual = "mesh",
 		mesh = "mobs_mc_slime.b3d",
 		visual_size = { x = 9, y = 9 },
-		textures = { { "sulfur_cube_entity.png", "sulfur_cube_entity.png" } },
-		
+		use_texture_alpha = "blend",
+		textures = { slime_texture_list() },
+
 		movement_speed = 10,
 		jump_height = 7,
 		fall_damage = 0,
@@ -353,11 +407,26 @@ if mcl_mobs and mcl_mobs.register_mob then
 		-- Usamos run_ai para nossa lógica de pulo customizada
 		run_ai = sulfur_slime_ai,
 
+		on_punch = function(self)
+			if self.sulphur_immortal then return true end
+		end,
+
+		on_die = function(self)
+			remove_contents_visual(self)
+		end,
+
 		on_rightclick = function(self, clicker)
 			local stack = clicker:get_wielded_item()
 			local name = stack:get_name()
-			
-			-- Coleta no balde
+
+			-- Um bloco absorvido só pode ser removido com tesoura.
+			if self.sulphur_block then
+				if name ~= "mcl_tools:shears" then return end
+				remove_absorbed_block(self, clicker, stack)
+				return
+			end
+
+			-- Coleta no balde somente quando o cubo está vazio.
 			if name == "mcl_buckets:bucket_empty" then
 				if not core.is_creative_enabled(clicker:get_player_name()) then
 					clicker:set_wielded_item(ItemStack(modname .. ":bucket_of_sulfur_cube"))
@@ -365,25 +434,29 @@ if mcl_mobs and mcl_mobs.register_mob then
 				self.object:remove()
 				return
 			end
-			
-			-- Troca de material (Cubo de Enxofre)
-			if item_is_block(name) and name ~= modname .. ":sulfur_slime_spawn_egg" then
-				local rule = classify_material(name)
-				if rule then
-					self.sulphur_material = rule.label
-					self.sulphur_rule = rule
-					self.object:set_acceleration({ x = 0, y = -9.8 * rule.gravity, z = 0 })
-					self.object:set_properties({
-						nametag = S("Cubo de enxofre: @1", rule.label),
-						nametag_color = "#f4d35e"
-					})
-					if not core.is_creative_enabled(clicker:get_player_name()) then
-						stack:take_item()
-						clicker:set_wielded_item(stack)
-					end
-					core.sound_play("default_place_node", { pos = self.object:get_pos(), gain = 0.5, max_hear_distance = 12 })
-				end
+
+			if not item_is_block(name) or name == modname .. ":sulfur_slime_spawn_egg" then return end
+			local rule = classify_material(name)
+			if not rule then return end
+
+			self.sulphur_material = rule.label
+			self.sulphur_block = name
+			self.sulphur_rule = rule
+			self.movement_speed = 10 * rule.speed
+			self.jump_height = 7 * rule.jump
+				set_contents_visual(self, name)
+				make_slime_immortal(self)
+				self.object:set_acceleration({ x = 0, y = -9.8 * rule.gravity, z = 0 })
+				self.object:set_properties({
+					textures = { slime_texture_list(name) },
+					nametag = S("Cubo de enxofre: @1", rule.label),
+					nametag_color = "#f4d35e"
+				})
+			if not core.is_creative_enabled(clicker:get_player_name()) then
+				stack:take_item()
+				clicker:set_wielded_item(stack)
 			end
+			core.sound_play("default_place_node", { pos = self.object:get_pos(), gain = 0.5, max_hear_distance = 12 })
 		end,
 
 		do_custom = function(self, dtime, moveresult)
