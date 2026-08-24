@@ -1,9 +1,13 @@
--- Sulphur Update for BetterCraft / Mineclonia
 -- SPDX-License-Identifier: MIT
 local core = minetest
 local S = core.get_translator("sulphur_update")
 
 local modname = "sulphur_update"
+
+-- Escalas visuais configuráveis.
+local SLIME_VISUAL_SIZE = { x = 9, y = 9 }
+local SULFUR_BLOCK_VISUAL_SIZE = { x = 0.08, y = 0.08 }
+
 local function tex(name)
 	return name .. ".png"
 end
@@ -40,55 +44,225 @@ register_full_block("sulfur_bricks", "Tijolos de enxofre", "sulfur_bricks",
 local spike_groups = { pickaxey = 1, attached_node = 1, material_sulphur = 1 }
 local spike_box = { type = "fixed", fixed = { -0.5, -0.5, -0.5, 0.5, 0.5, 0.5 } }
 
-local function register_spike_model(name, description, model)
+local function register_spike_texture(name, description, texture)
 	core.register_node(modname .. ":" .. name, {
 		description = S(description),
-		drawtype = "mesh",
-		mesh = model,
-		tiles = { tex("sulfur_spike") },
+		drawtype = "plantlike",
+		tiles = { tex(texture) },
 		paramtype = "light",
+		use_texture_alpha = true,
 		sunlight_propagates = true,
 		walkable = false,
 		selection_box = spike_box,
 		collision_box = spike_box,
 		groups = spike_groups,
-		drop = modname .. ":sulfur_spike",
+		drop = modname .. ":sulphur_stalactite",
 	})
 end
-
--- Modelos OBJ/MTL com nomes exatos fornecidos pelo usuário.
-register_spike_model("sulfur_spike", "Espinho de enxofre", "sulfur_spike.obj")
-register_spike_model("sulfur_spike_down_base", "Espinho de enxofre — base inferior", "sulfur_spike_down_base.obj")
-register_spike_model("sulfur_spike_down_frustum", "Espinho de enxofre — frustum inferior",
-	"sulfur_spike_down_frustum.obj")
-register_spike_model("sulfur_spike_down_middle", "Espinho de enxofre — meio inferior", "sulfur_spike_down_middle.obj")
-register_spike_model("sulfur_spike_down_tip_merge", "Espinho de enxofre — ponta inferior mesclada",
-	"sulfur_spike_down_tip_merge.obj")
-register_spike_model("sulfur_spike_down_tip", "Espinho de enxofre — ponta inferior", "sulfur_spike_down_tip.obj")
-register_spike_model("sulfur_spike_up_base", "Espinho de enxofre — base superior", "sulfur_spike_up_base.obj")
-register_spike_model("sulfur_spike_up_frustum", "Espinho de enxofre — frustum superior", "sulfur_spike_up_frustum.obj")
-register_spike_model("sulfur_spike_up_middle", "Espinho de enxofre — meio superior", "sulfur_spike_up_middle.obj")
-register_spike_model("sulfur_spike_up_tip_merge", "Espinho de enxofre — ponta superior mesclada",
-	"sulfur_spike_up_tip_merge.obj")
-register_spike_model("sulfur_spike_up_tip", "Espinho de enxofre — ponta superior", "sulfur_spike_up_tip.obj")
 
 core.register_alias(modname .. ":cinnabar_block_wiki", modname .. ":cinnabar")
 core.register_alias(modname .. ":sulfur_block_wiki", modname .. ":sulfur")
 core.register_alias(modname .. ":sulphur_block_wiki", modname .. ":sulphur")
 
-core.register_node(modname .. ":sulphur_stalactite", {
-	description = S("Estalactite de enxofre"),
-	drawtype = "mesh",
-	mesh = "sulfur_spike_down_tip.obj",
-	tiles = { tex("sulphur_stalactite") },
-	paramtype = "light",
-	sunlight_propagates = true,
-	walkable = false,
-	climbable = false,
-	selection_box = { type = "fixed", fixed = { -0.25, -0.5, -0.25, 0.25, 0.5, 0.25 } },
-	collision_box = { type = "fixed", fixed = { -0.2, -0.5, -0.2, 0.2, 0.5, 0.2 } },
-	groups = { pickaxey = 1, attached_node = 1, material_sulphur = 1 },
-	drop = modname .. ":sulphur_stalactite",
+-- Espeleotemas: cinco estágios, duas direções e os mesmos nomes usados pelo dripstone.
+local sulfur_spike_directions = { [-1] = "down", [1] = "up" }
+local sulfur_spike_stages = { "tip_merge", "tip", "frustum", "middle", "base" }
+
+local function sulfur_spike_node(stage, direction)
+	return modname .. ":sulfur_spike_" .. sulfur_spike_directions[direction] .. "_" .. sulfur_spike_stages[stage]
+end
+
+local function sulfur_spike_direction(name)
+	return string.find(name, ":sulfur_spike_down_", 1, true) and -1 or 1
+end
+
+local function sulfur_spike_length(pos, direction)
+	local offset_pos = vector.copy(pos)
+	local length = 0
+	repeat
+		length = length + 1
+		offset_pos = vector.offset(offset_pos, 0, direction, 0)
+	until core.get_item_group(core.get_node(offset_pos).name, "sulfur_spike_stage") == 0
+	return length
+end
+
+local function sulfur_spike_break_column(pos, direction)
+	local offset_pos = vector.copy(pos)
+	while true do
+		offset_pos = vector.offset(offset_pos, 0, -direction, 0)
+		local node = core.get_node(offset_pos)
+		local stage = core.get_item_group(node.name, "sulfur_spike_stage")
+		if stage == 1 and sulfur_spike_direction(node.name) == -direction then
+			core.swap_node(offset_pos, { name = sulfur_spike_node(2, -direction) })
+			break
+		elseif stage == 0 then
+			break
+		else
+			core.add_item(offset_pos, ItemStack(modname .. ":sulphur_stalactite"))
+			core.swap_node(offset_pos, { name = "air" })
+		end
+	end
+end
+
+local function sulfur_spike_update(pos, direction)
+	local other_pos = vector.offset(pos, 0, -direction, 0)
+	local other_name = core.get_node(other_pos).name
+	if core.get_item_group(other_name, "sulfur_spike_stage") ~= 0 then
+		core.swap_node(pos, { name = sulfur_spike_node(1, direction) })
+		core.swap_node(other_pos, { name = sulfur_spike_node(1, -direction) })
+	end
+
+	local stage
+	local previous_stage
+	while true do
+		pos = vector.offset(pos, 0, direction, 0)
+		previous_stage = stage
+		stage = core.get_item_group(core.get_node(pos).name, "sulfur_spike_stage")
+		if stage == 4 or stage == 5 then
+			break
+		elseif stage == 0 then
+			if previous_stage == 3 then
+				core.swap_node(vector.offset(pos, 0, -direction, 0), { name = sulfur_spike_node(5, direction) })
+			end
+			break
+		end
+		core.swap_node(pos, { name = sulfur_spike_node(stage + 1, direction) })
+	end
+end
+
+local function place_sulfur_spike(itemstack, player, pointed_thing)
+	if not pointed_thing or pointed_thing.type ~= "node" then return itemstack end
+	local under_node = core.get_node(pointed_thing.under)
+	if core.get_item_group(under_node.name, "solid") == 0
+		and core.get_item_group(under_node.name, "sulfur_spike_stage") == 0 then
+		return itemstack
+	end
+	if pointed_thing.above.x ~= pointed_thing.under.x or pointed_thing.above.z ~= pointed_thing.under.z then
+		return itemstack
+	end
+	-- CORREÇÃO: o sinal estava invertido. "above" é onde o novo nó vai ser colocado;
+	-- se "above" fica ACIMA de "under" (chão), o espeleotema deve crescer para CIMA (stalagmite = "up").
+	-- se "above" fica ABAIXO de "under" (teto), o espeleotema deve crescer para BAIXO (stalactite = "down").
+	local direction = pointed_thing.above.y - pointed_thing.under.y
+	if direction == 0 then return itemstack end
+	if not core.is_creative_enabled(player:get_player_name()) then itemstack:take_item() end
+	core.set_node(pointed_thing.above, { name = sulfur_spike_node(2, direction) })
+	sulfur_spike_update(pointed_thing.above, direction)
+	return itemstack
+end
+
+local function sulfur_spike_destruct(pos)
+	local direction = sulfur_spike_direction(core.get_node(pos).name)
+	sulfur_spike_break_column(pos, direction)
+
+	local offset_pos = vector.offset(pos, 0, direction, 0)
+	if core.get_item_group(core.get_node(offset_pos).name, "sulfur_spike_stage") ~= 0 then
+		core.swap_node(offset_pos, { name = sulfur_spike_node(2, direction) })
+		while true do
+			offset_pos = vector.offset(offset_pos, 0, direction, 0)
+			local stage = core.get_item_group(core.get_node(offset_pos).name, "sulfur_spike_stage")
+			if stage == 3 then
+				core.swap_node(offset_pos, { name = sulfur_spike_node(2, direction) })
+			elseif stage == 4 or stage == 5 then
+				core.swap_node(offset_pos, { name = sulfur_spike_node(3, direction) })
+				break
+			else
+				break
+			end
+		end
+	end
+end
+
+for i, stage in ipairs(sulfur_spike_stages) do
+	local add = (i - 1) / 16
+	local box = { type = "fixed", fixed = {
+		math.max(-0.5, -3 / 16 - add), -0.5,
+		math.max(-0.5, -3 / 16 - add),
+		math.min(0.5, 3 / 16 + add), 0.5,
+		math.min(0.5, 3 / 16 + add)
+	} }
+	for direction, label in pairs(sulfur_spike_directions) do
+		core.register_node(sulfur_spike_node(i, direction), {
+			description = S("Espeleotema de enxofre (@1/@2)", i, #sulfur_spike_stages),
+			_doc_items_hidden = true,
+			drawtype = "plantlike",
+			tiles = { "sulfur_spike_" .. label .. "_" .. stage .. ".png" },
+			paramtype = "light",
+			use_texture_alpha = true,
+			sunlight_propagates = true,
+			is_ground_content = false,
+			walkable = false,
+			climbable = false,
+			selection_box = box,
+			collision_box = box,
+			groups = {
+				pickaxey = 1, attached_node = 1, material_sulphur = 1,
+				not_in_creative_inventory = 1, sulfur_spike_stage = i, pathfinder_partial = 2,
+			},
+			drop = modname .. ":sulphur_stalactite",
+			on_destruct = sulfur_spike_destruct,
+			sounds = mcl_sounds and mcl_sounds.node_sound_stone_defaults and mcl_sounds.node_sound_stone_defaults() or {},
+		})
+	end
+end
+
+core.register_craftitem(modname .. ":sulphur_stalactite", {
+	description = S("Espeleotema de enxofre"),
+	inventory_image = tex("sulfur_spike_up_tip"),
+	on_place = place_sulfur_spike,
+	on_secondary_use = place_sulfur_spike,
+})
+
+core.register_lbm({
+	label = "Preservar espeleotemas de enxofre",
+	name = modname .. ":keep_sulfur_spikes",
+	nodenames = {
+		modname .. ":sulfur_spike_up_tip_merge", modname .. ":sulfur_spike_up_tip",
+		modname .. ":sulfur_spike_up_frustum", modname .. ":sulfur_spike_up_middle", modname .. ":sulfur_spike_up_base",
+		modname .. ":sulfur_spike_down_tip_merge", modname .. ":sulfur_spike_down_tip",
+		modname .. ":sulfur_spike_down_frustum", modname .. ":sulfur_spike_down_middle", modname .. ":sulfur_spike_down_base",
+	},
+	run_at_every_load = true,
+	action = function(pos) end,
+	})
+
+-- Crescimento simples baseado no ABM do mcl_dripstone. Os nós permanecem no mapa
+-- porque são nós normais, e não entidades temporárias.
+core.register_abm({
+	label = "Crescimento dos espeleotemas de enxofre",
+	nodenames = { modname .. ":sulfur_spike_up_tip" },
+	interval = 69,
+	chance = 88,
+	action = function(pos)
+		local stalactite_length = sulfur_spike_length(pos, 1)
+		local water_pos = vector.offset(pos, 0, stalactite_length + 1, 0)
+		if core.get_item_group(core.get_node(water_pos).name, "water") == 0 then return end
+		if core.get_node(vector.offset(pos, 0, stalactite_length, 0)).name ~= modname .. ":sulfur" then return end
+
+		if math.random(2) == 1 then
+			for i = 1, 10 do
+				local candidate = vector.offset(pos, 0, -i, 0)
+				local node = core.get_node(candidate)
+				local groups = core.registered_nodes[node.name] and core.registered_nodes[node.name].groups or {}
+				if (groups.solid or 0) > 0 or (groups.sulfur_spike_stage or 0) > 0 then
+					if i <= 7 then
+						core.set_node(vector.offset(pos, 0, -i + 1, 0), { name = sulfur_spike_node(2, -1) })
+						sulfur_spike_update(vector.offset(pos, 0, -i + 1, 0), -1)
+					end
+					return
+				elseif node.name ~= "air" then
+					return
+				end
+			end
+		else
+			if stalactite_length > 7 then return end
+			local target = vector.offset(pos, 0, -1, 0)
+			if core.get_node(target).name == "air" then
+				core.set_node(target, { name = sulfur_spike_node(2, 1) })
+				sulfur_spike_update(target, 1)
+			end
+		end
+	end,
 })
 
 core.register_craftitem(modname .. ":bucket_of_sulfur_cube", {
@@ -250,53 +424,81 @@ core.register_lbm({
 	end
 })
 
--- Função de IA customizada para simular o Slime original
-local function sulfur_slime_ai(self, dtime)
-	-- Se o mob estiver morrendo ou sem objeto, não faz nada
-	if not self.object:get_luaentity() then return end
+-- Movimento do slime baseado em slime_do_go_pos, slime_turn e slime_jump_continuously da BetterCraft.
+local function sulfur_slime_do_go_pos(self, dtime, moveresult)
+	local rule = self.sulphur_rule or material_rules.default
+	local speed = (self.movement_velocity or self.movement_speed or 10) * rule.speed
+	if not self._next_jump then self._next_jump = 0 end
 
-	local vel = self.object:get_velocity()
+	local delay = math.max(0, self._next_jump - dtime)
+	if delay == 0 or self._in_water or not moveresult
+		or not (moveresult.touching_ground or moveresult.standing_on_object) then
+		if delay == 0 then
+			self._jump = true
+			delay = (math.random(60) + 40) / 20 * (self.jump_delay_multiplier or 1)
+		end
+		self.acc_dir.z = speed / 20
+		self.acc_speed = speed
+	else
+		self.acc_dir.z = 0
+		self.acc_speed = 0
+	end
+	self._next_jump = delay
+end
+
+local function sulfur_slime_turn(self, dtime, self_pos)
+	local remaining = self._next_turn or 0
+	if remaining == 0 then remaining = (math.random(60) + 40) / 20 end
+	local standing_on = core.registered_nodes[self.standing_on]
+	if standing_on and (standing_on.walkable or standing_on.liquidtype ~= "none") then
+		remaining = math.max(0, remaining - dtime)
+		if remaining == 0 then self:set_yaw(math.random() * 2 * math.pi) end
+	end
+	self._next_turn = remaining
+end
+
+local function sulfur_slime_ai(self, dtime)
+	if self.dead or not self.object:get_luaentity() then return end
+	local self_pos = self.object:get_pos()
 	local rule = self.sulphur_rule or material_rules.default
 
-	-- Verifica se está no chão (velocidade Y próxima de zero)
-	if math.abs(vel.y) < 0.1 then
-		self.movement_velocity = 0 -- Para de se mover horizontalmente no chão
-		
-		-- Timer para o próximo pulo
-		self._jump_timer = (self._jump_timer or 0) - dtime
-		if self._jump_timer <= 0 then
-			-- Define o tempo para o próximo pulo (afetado pela velocidade do material)
-			self._jump_timer = math.random(2, 4) * (1 / rule.speed)
-			
-			-- Muda a direção aleatoriamente (como o slime original)
-			local new_yaw = math.random() * math.pi * 2
-			self.object:set_yaw(new_yaw)
-
-			-- Executa o pulo
-			local speed = (self.movement_speed or 10) * rule.speed
-			local jump_h = (self.jump_height or 7) * rule.jump
-			
-			-- Define a velocidade do pulo baseada no Yaw (direção)
-			self.object:set_velocity({
-				x = -math.sin(new_yaw) * (speed / 2.5), -- Slimes pulam um pouco menos que sua velocidade de corrida
-				y = jump_h,
-				z = math.cos(new_yaw) * (speed / 2.5)
-			})
-			
-			-- Toca o som de pulo
-			core.sound_play("green_slime_jump", {pos = self.object:get_pos(), gain = 0.5, max_hear_distance = 12})
-		end
+	-- Sem bloco, o slime usa movimento contínuo e salto automático da BetterCraft.
+	if not self.sulphur_block then
+		self.movement_goal = "go_pos"
+		self.movement_velocity = (self.movement_speed or 10) * rule.speed
+		sulfur_slime_turn(self, dtime, self_pos)
+	else
+		-- Com bloco, mantém a velocidade e a gravidade alteradas pelo material.
+		self.movement_goal = "go_pos"
+		self.movement_velocity = (self.movement_speed or 10) * rule.speed
 	end
 end
 
--- O bloco absorvido é mesclado diretamente na textura UV do slime.
-local SLIME_FRONT_TEXTURE = "sulfur_cube_entity_front.png^[opacity:237"
+-- Visual auxiliar do bloco absorvido, exibido como wielditem dentro do slime.
+core.register_entity(modname .. ":sulfur_cube_contents", {
+	initial_properties = {
+		physical = false,
+		collide_with_objects = false,
+		pointable = false,
+		visual = "wielditem",
+		visual_size = SULFUR_BLOCK_VISUAL_SIZE,
+		wield_item = "air",
+	},
+	on_step = function(self)
+		if not self.parent or not self.parent:get_pos() then
+			self.object:remove()
+		end
+	end,
+})
+
+-- Texturas base por face do slime.
+local SLIME_FRONT_TEXTURE = "sulfur_cube_entity.png^[opacity:237"
 local SLIME_SIDE_TEXTURES = {
-	"sulfur_cube_entity_side1.png^[opacity:237",
-	"sulfur_cube_entity_side2.png^[opacity:237",
-	"sulfur_cube_entity_side3.png^[opacity:237",
-	"sulfur_cube_entity_side4.png^[opacity:237",
-	"sulfur_cube_entity_side5.png^[opacity:237",
+	"sulfur_cube_entity.png^[opacity:237",
+	"sulfur_cube_entity.png^[opacity:237",
+	"sulfur_cube_entity.png^[opacity:237",
+	"sulfur_cube_entity.png^[opacity:237",
+	"sulfur_cube_entity.png^[opacity:237",
 }
 
 local function get_block_texture(itemname)
@@ -333,13 +535,23 @@ local function slime_texture_list(itemname)
 end
 
 local function remove_contents_visual(self)
+	if self.sulphur_contents and self.sulphur_contents:get_pos() then
+		self.sulphur_contents:remove()
+	end
 	self.sulphur_contents = nil
 	self.object:set_properties({ textures = { slime_texture_list() } })
 end
 
 local function set_contents_visual(self, itemname)
-	self.sulphur_contents = true
-	self.object:set_properties({ textures = { slime_texture_list(itemname) } })
+	remove_contents_visual(self)
+	local obj = core.add_entity(self.object:get_pos(), modname .. ":sulfur_cube_contents")
+	if obj then
+		obj:set_properties({ wield_item = itemname, visual_size = SULFUR_BLOCK_VISUAL_SIZE })
+		local child = obj:get_luaentity()
+		if child then child.parent = self.object end
+		obj:set_attach(self.object, "", { x = 0, y = 0.8, z = 0 }, { x = 0, y = 0, z = 0 })
+		self.sulphur_contents = obj
+	end
 end
 
 local function make_slime_immortal(self)
@@ -382,8 +594,8 @@ if mcl_mobs and mcl_mobs.register_mob then
 		collisionbox = { -0.75, -0.01, -0.75, 0.75, 1.5, 0.75 },
 		visual = "mesh",
 		mesh = "mobs_mc_slime.b3d",
-		visual_size = { x = 9, y = 9 },
-		use_texture_alpha = "blend",
+		visual_size = SLIME_VISUAL_SIZE,
+		use_texture_alpha = true,
 		textures = { slime_texture_list() },
 
 		movement_speed = 10,
@@ -404,8 +616,9 @@ if mcl_mobs and mcl_mobs.register_mob then
 			stand_start = 1, stand_end = 1,
 		},
 		
-		-- Usamos run_ai para nossa lógica de pulo customizada
-		run_ai = sulfur_slime_ai,
+			do_go_pos = sulfur_slime_do_go_pos,
+			run_ai = sulfur_slime_ai,
+			jump_delay_multiplier = 1,
 
 		on_punch = function(self)
 			if self.sulphur_immortal then return true end
