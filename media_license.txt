@@ -1,0 +1,61 @@
+Media License — sulphur_update
+================================
+
+This file covers textures, sounds, models, and other media assets used
+by this mod. The source code (.lua files) is licensed separately under
+LICENSE.txt (MIT).
+
+------------------------------------------------------------------------------
+1) Original textures made for this mod
+------------------------------------------------------------------------------
+License: CC-BY-SA 4.0 (https://creativecommons.org/licenses/by-sa/4.0/)
+Author: wrxxnch
+
+Files:
+  cinnabar.png
+  chiseled_cinnabar.png
+  polished_cinnabar.png
+  cinnabar_bricks.png
+  potent_sulfur.png
+  sulfur.png
+  chiseled_sulfur.png
+  polished_sulfur.png
+  sulfur_bricks.png
+  sulfur_spike.png
+  sulfur_spike_up_tip_merge.png
+  sulfur_spike_up_tip.png
+  sulfur_spike_up_frustum.png
+  sulfur_spike_up_middle.png
+  sulfur_spike_up_base.png
+  sulfur_spike_down_tip_merge.png
+  sulfur_spike_down_tip.png
+  sulfur_spike_down_frustum.png
+  sulfur_spike_down_middle.png
+  sulfur_spike_down_base.png
+  bucket_of_sulfur_cube.png
+  sulphur_smoke.png
+  sulphur_smoke_particle.png
+  sulfur_cube_entity.png
+  music_disc_bounce.png
+
+------------------------------------------------------------------------------
+2) Music track
+------------------------------------------------------------------------------
+"Bounce" — composed and produced by: Fingerspit (Paula Ruiz)
+License: CC-BY-SA 4.0 (https://creativecommons.org/licenses/by-sa/4.0/)
+Sound file: mcl_jukebox_track_7 (or equivalent sound file for the "Bounce" disc)
+
+------------------------------------------------------------------------------
+3) Third-party assets (used via dependencies, not redistributed here)
+------------------------------------------------------------------------------
+These assets are NOT part of this mod — they belong to the mods that
+sulphur_update depends on, and follow each project's original license:
+
+  - "mobs_mc_slime.b3d" model 
+    sounds — from the mobs_mc / Mineclonia mobs mod (own project license,
+    typically CC-BY-SA 3.0/4.0). See the mobs_mc / Mineclonia license.
+  - "fire_large" and "default_place_node" sounds — from mcl_sounds / mcl_core
+    (Mineclonia), under that project's own license.
+
+If any of these credits are incorrect or out of date, please correct them
+to match the actual source of each file.
